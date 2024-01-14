@@ -1,0 +1,1 @@
+This is copied from [proof-of-passport](https://github.com/zk-passport/proof-of-passport/tree/main/circuits)

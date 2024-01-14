@@ -85,40 +85,16 @@ fi
 print_action "[core/circom] Compiling example circuits..."
 cd $CIRCOM_DIR
 
-# Compile multiplier2
-compile_circuit multiplier2 multiplier2.circom
+# Setup and compile proof_of_passport
+npm_install passport
+compile_circuit passport circuits/proof_of_passport.circom
 
-# Setup and compile keccak256
-npm_install keccak256
-compile_circuit keccak256 keccak256_256_test.circom
+print_action "[core/circom] Running trusted setup for proof_of_passport..."
+./scripts/trusted_setup.sh passport 20 proof_of_passport
 
-# Setup and compile rsa
-npm_install rsa
-compile_circuit rsa main.circom
-
-# Run trusted setup for multiplier2
-print_action "[core/circom] Running trusted setup for multiplier2..."
-./scripts/trusted_setup.sh multiplier2 08 multiplier2
-
-# Generate arkzkey for multipler2
-print_action "[core/circom] Generating arkzkey for multiplier2..."
-./scripts/generate_arkzkey.sh multiplier2 multiplier2
-
-# Run trusted setup for keccak256
-print_action "[core/circom] Running trusted setup for keccak256..."
-./scripts/trusted_setup.sh keccak256 18 keccak256_256_test
-
-# Generate arkzkey for keccak256
-print_action "[core/circom] Generating arkzkey for keccak256..."
-./scripts/generate_arkzkey.sh keccak256 keccak256_256_test
-
-# Run trusted setup for rsa
-print_action "[core/circom] Running trusted setup for rsa..."
-./scripts/trusted_setup.sh rsa 18 main
-
-# Generate arkzkey for rsa
-print_action "[core/circom] Generating arkzkey for rsa..."
-./scripts/generate_arkzkey.sh rsa main
+# Generate arkzkey for proof_of_passport
+print_action "[core/circom] Generating arkzkey for proof_of_passport..."
+./scripts/generate_arkzkey.sh passport proof_of_passport
 
 # Add support for target architectures
 print_action "[ffi] Adding support for target architectures..."

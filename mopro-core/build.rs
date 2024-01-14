@@ -79,12 +79,8 @@ fn build_dylib(wasm_path: String, dylib_name: String) -> Result<()> {
 
 fn main() -> Result<()> {
     // TODO: build_circuit function to builds all related artifacts, instead of doing this externally
-    let dir = "examples/circom/keccak256";
-    let circuit = "keccak256_256_test";
-
-    // XXX: Use RSA
-    // let dir = "examples/circom/rsa";
-    // let circuit = "main";
+    let dir = "examples/circom/passport";
+    let circuit = "proof_of_passport";
 
     let zkey_path = format!("{}/target/{}_final.zkey", dir, circuit);
     let wasm_path = format!("{}/target/{}_js/{}.wasm", dir, circuit, circuit);
