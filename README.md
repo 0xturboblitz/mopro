@@ -42,6 +42,33 @@ Zooming in a bit:
 -   Install [circom](https://docs.circom.io/) and [snarkjs](https://github.com/iden3/snarkjs)
 -   Run `./scripts/prepare.sh` to check all prerequisites are set.
 
+(Note that we require `uniffi-bindgen` to be `0.25`, if you have an older version you might need to remove this to re-install the latest).
+
+### Configure settings
+
+By creating a `toml` configuration file you can specify what build settings you want to use. Example is provided in `config-example.toml`:
+
+```
+# config-example.toml
+
+[build]
+# For iOS device_type can be x86_64, simulator, device
+# For Android device_type can be x86_64, arm, arm64
+device_type = "simulator" # Options: x86_64, simulator, device, arm, arm64
+
+# debug is for Rust library to be in debug mode and release for release mode
+# We recommend release mode by default for performance
+build_mode = "release"    # Options: debug, release
+
+[circuit]
+dir = "examples/circom/keccak256" # Directory of the circuit
+name = "keccak256_256_test"       # Name of the circuit
+
+[dylib]
+use_dylib = false         # Options: true, false
+name = "keccak256.dylib" # Name of the dylib file, only used if use_dylib is true
+```
+
 ### iOS
 
 #### Prepare
@@ -50,11 +77,51 @@ Zooming in a bit:
 
 #### Build Bindings
 
-To build bindings for iOS simulator debug mode, run
+To build bindings for iOS, adjust settings in your config file (we recommend starting with `simulator` and `release`) and run:
 
 ```sh
-./scripts/build_ios.sh simulator debug
+./scripts/build_ios.sh config-example.toml
 ```
+
+Open the `mopro-ios/MoproKit/Example/MoproKit.xcworkspace` in Xcode.
+
+#### Update Bindings
+
+To update bindings, run `./scripts/update_bindings.sh config-example`.
+
+### Android
+
+#### Prepare
+
+-   Install [Android Studio](https://developer.android.com/studio)
+-   Open Android Studio, and navigate to SDK Manager > SDK Tools > NDK (Side by Side) as laid out on the [Android Developer site](https://developer.android.com/studio/projects/install-ndk#default-version).
+-   Export `$ANDROID_HOME` and change `{USER_NAME}` to your username
+    ```sh
+    export ANDROID_HOME="/Users/{USER_NAME}/Library/Android/sdk"
+    ```
+-   Locate which NDK version you have by
+    ```sh
+    ls $ANDROID_HOME/ndk
+    # 26.1.10909125
+    ```
+    and set it to your `NDK_PATH` environment variable. e.g.
+    ```sh
+    NDK_PATH=$ANDROID_HOME/ndk/26.1.10909125
+    ```
+    > Reference: [Running Rust on Android with UniFFI](https://sal.dev/android/intro-rust-android-uniffi/)
+
+#### Build and Update Bindings
+
+To build bindings for android simulator debug mode, run
+
+```sh
+./scripts/build_android.sh config-example.toml
+```
+
+- **Device types:** `x86_64`, `x86`, `arm`, `arm64`
+  Check your device architecture here: https://doc.e.foundation/devices
+  For Android Studio simulator (Pixel series), choose `arm64`
+- **Mode:** `debug`, `release`
 
 ## Community and Talks
 

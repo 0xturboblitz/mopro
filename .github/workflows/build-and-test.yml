@@ -24,15 +24,13 @@ jobs:
     # TODO: We should be able to cache this
       - name: Install circom
         run: |
-          git clone https://github.com/iden3/circom.git
-          cd circom
-          cargo build --release
-          cargo install --path circom
+          sudo wget -O /Users/runner/.cargo/bin/circom https://github.com/iden3/circom/releases/download/v2.1.8/circom-macos-amd64
+          sudo chmod +x /Users/runner/.cargo/bin/circom
       - uses: actions/checkout@v3
       - name: Prepare CI for iOS
         run: ./scripts/prepare_ci.sh
       - name: Build for iOS
-        run: ./scripts/build_ios.sh x86_64 debug
+        run: ./scripts/build_ios.sh config-ci.toml
       - name: Run iOS tests
         run: |
           cd mopro-ios/MoproKit/Example
@@ -43,15 +41,13 @@ jobs:
     steps:
       - name: Install circom
         run: |
-          git clone https://github.com/iden3/circom.git
-          cd circom
-          cargo build --release
-          cargo install --path circom
+          sudo wget -O /usr/bin/circom https://github.com/iden3/circom/releases/download/v2.1.8/circom-linux-amd64
+          sudo chmod +x /usr/bin/circom
       - uses: actions/checkout@v3
       - name: Prepare CI for Core and FFI
         run: ./scripts/prepare_ci.sh
       - name: Build for Android
-        run: ./scripts/build_android.sh arm64 debug
+        run: ./scripts/build_android.sh config-example-android.toml
       - name: Run core tests
         run: cd mopro-core && cargo test -- --nocapture
       - name: Run FFI tests

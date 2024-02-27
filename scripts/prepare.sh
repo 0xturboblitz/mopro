@@ -1,38 +1,7 @@
 #!/bin/bash
 
-# Deal with errors
-set -euo pipefail
-
-# Color definitions
-DEFAULT='\033[0m'
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-GREY='\033[0;90m'
-
-# Coloring the -x output (commands)
-# DEBUG_COLOR="${DEFAULT}"
-# trap 'echo -e ${DEBUG_COLOR}${BASH_COMMAND}${DEFAULT}' DEBUG
-
-# Function to handle exit
-handle_exit() {
-    # $? is a special variable that holds the exit code of the last command executed
-    if [ $? -ne 0 ]; then
-        echo -e "\n${RED}Script did not finish successfully!${DEFAULT}"
-    fi
-}
-
-# Set the trap
-trap handle_exit EXIT
-
-print_action() {
-    printf "\n${GREEN}$1${DEFAULT}\n"
-}
-
-print_warning() {
-    printf "\n${YELLOW}$1${DEFAULT}\n"
-}
+# Source the script prelude
+source "scripts/_prelude.sh"
 
 # Assert we're in the project root
 if [[ ! -d "mopro-ffi" || ! -d "mopro-core" || ! -d "mopro-ios" ]]; then
@@ -96,11 +65,27 @@ print_action "[core/circom] Running trusted setup for proof_of_passport..."
 print_action "[core/circom] Generating arkzkey for proof_of_passport..."
 ./scripts/generate_arkzkey.sh passport proof_of_passport
 
+# Run trusted setup for anonAadhaar
+print_action "[core/circom] Running trusted setup for anonAadhaar..."
+./scripts/trusted_setup.sh anonAadhaar 21 aadhaar-verifier
+
+# Generate arkzkey for anonAadhaar
+print_action "[core/circom] Generating arkzkey for anonAadhaar..."
+./scripts/generate_arkzkey.sh anonAadhaar aadhaar-verifier
+
+# Run trusted setup for complex circuit
+print_action "[core/circom] Running trusted setup for complex circuit..."
+./scripts/trusted_setup.sh complex-circuit 21 complex-circuit-1000k-1000k
+
+# Generate arkzkey for complex circuit
+print_action "[core/circom] Generating arkzkey for complex circuit..."
+./scripts/generate_arkzkey.sh complex-circuit complex-circuit-1000k-1000k
+
 # Add support for target architectures
 print_action "[ffi] Adding support for target architectures..."
 cd ${PROJECT_DIR}/mopro-ffi
 
-for target in x86_64-apple-ios aarch64-apple-ios aarch64-apple-ios-sim; do
+for target in x86_64-apple-ios aarch64-apple-ios aarch64-apple-ios-sim aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android; do
     if ! check_target_support $target; then
         rustup target add $target
     else
@@ -117,4 +102,25 @@ else
     echo "uniffi-bindgen already installed, skipping."
 fi
 
-print_action "Done! Please run ./scripts/buld_ios.sh to build for iOS."
+# Install toml-cli binary
+print_action "[config] Installing toml-cli..."
+if ! command -v toml &> /dev/null
+then
+    cargo install toml-cli
+else
+    echo "toml already installed, skipping."
+fi
+
+# Check uniffi-bindgen version
+print_action "[ffi] Checking uniffi-bindgen version..."
+UNIFFI_VERSION=$(uniffi-bindgen --version | grep -oE '0\.25\.[0-9]+' || echo "not found")
+EXPECTED_VERSION_PREFIX="0.25"
+if [[ $UNIFFI_VERSION != $EXPECTED_VERSION_PREFIX* ]]; then
+    echo -e "${RED}Error: uniffi-bindgen version is not 0.25.x. Current version: $(uniffi-bindgen --version)${DEFAULT}"
+    echo -e "${RED}Please uninstall uniffi-bindgen and run this script again.${DEFAULT}"
+    exit 1
+else
+    echo "uniffi-bindgen version is $UNIFFI_VERSION, which is acceptable."
+fi
+
+print_action "Done! Please run './scripts/build_ios.sh config-example.toml' to build for iOS."

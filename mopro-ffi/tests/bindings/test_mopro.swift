@@ -4,7 +4,7 @@ import Foundation
 let moproCircom = MoproCircom()
 
 let wasmPath = "./../../../../mopro-core/examples/circom/multiplier2/target/multiplier2_js/multiplier2.wasm"
-let r1csPath = "./../../../../mopro-core/examples/circom/multiplier2/target/multiplier2.r1cs"
+let arkzkeyPath = "./../../../../mopro-core/examples/circom/multiplier2/target/multiplier2_final.arkzkey"
 
 func serializeOutputs(_ stringArray: [String]) -> [UInt8] {
     var bytesArray: [UInt8] = []
@@ -33,8 +33,7 @@ func serializeOutputs(_ stringArray: [String]) -> [UInt8] {
 
 do {
     // Setup
-    let setupResult = try moproCircom.setup(wasmPath: wasmPath, r1csPath: r1csPath)
-    assert(!setupResult.provingKey.isEmpty, "Proving key should not be empty")
+    try moproCircom.initialize(arkzkeyPath: arkzkeyPath ,wasmPath: wasmPath)
 
     // Prepare inputs
     var inputs = [String: [String]]()
@@ -57,6 +56,12 @@ do {
 
     let isValid = try moproCircom.verifyProof(proof: generateProofResult.proof, publicInput: generateProofResult.inputs)
     assert(isValid, "Proof verification should succeed")
+
+    // Convert proof to Ethereum compatible proof
+    let convertProofResult = toEthereumProof(proof: generateProofResult.proof)
+    let convertInputsResult = toEthereumInputs(inputs: generateProofResult.inputs)
+    assert(convertProofResult.a.x.count > 0, "Proof should not be empty")
+    assert(convertInputsResult.count > 0, "Inputs should not be empty")
 
 } catch let error as MoproError {
     print("MoproError: \(error)")

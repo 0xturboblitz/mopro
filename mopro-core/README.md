@@ -36,12 +36,19 @@ Note that:
 
 ### Script
 
-Add third argument: `dylib`:
+- Add third argument `dylib`
+- Add forth argument with name of dylib, e.g. `rsa` if you want `rsa.dylib`
 
-`./scripts/update_bindings.sh device release dylib`
+`./scripts/update_bindings.sh device release dylib rsa`
 
 Note that `APPLE_SIGNING_IDENTITY` must be set.
 
 ## To use ark-zkey
 
 Experimental support for significantly faster zkey loading. See `../ark-zkey` README for how to build arkzkey.
+
+## To run msm benchmark report on laptop
+
+`cargo run --release --features gpu-benchmarks --package mopro-core --bin generate_benchmark_report`
+
+The report will be in `mopro-core/benchmarks/gpu_explorations/msm_bench_rust_laptop.csv`.

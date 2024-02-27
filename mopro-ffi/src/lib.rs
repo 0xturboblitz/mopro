@@ -1,6 +1,9 @@
 use mopro_core::middleware::circom;
 use mopro_core::MoproError;
 
+#[cfg(feature = "gpu-benchmarks")]
+use mopro_core::middleware::gpu_explorations::{self, BenchmarkResult};
+
 use num_bigint::BigInt;
 use std::collections::HashMap;
 use std::path::Path;
@@ -19,11 +22,32 @@ pub struct GenerateProofResult {
     pub inputs: Vec<u8>,
 }
 
-// NOTE: Make UniFFI and Rust happy, can maybe do some renaming here
-#[allow(non_snake_case)]
 #[derive(Debug, Clone)]
-pub struct SetupResult {
-    pub provingKey: Vec<u8>,
+pub struct G1 {
+    pub x: String,
+    pub y: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct G2 {
+    pub x: Vec<String>,
+    pub y: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProofCalldata {
+    pub a: G1,
+    pub b: G2,
+    pub c: G1,
+}
+
+// NOTE: Need to hardcode the types here, otherwise UniFFI will complain if the gpu-benchmarks feature is not enabled
+#[derive(Debug, Clone)]
+#[cfg(not(feature = "gpu-benchmarks"))]
+pub struct BenchmarkResult {
+    pub num_msm: u32,
+    pub avg_processing_time: f64,
+    pub total_processing_time: f64,
 }
 
 //     pub inputs: Vec<u8>,
@@ -104,6 +128,35 @@ pub fn verify_proof2(proof: Vec<u8>, public_input: Vec<u8>) -> Result<bool, Mopr
     Ok(is_valid)
 }
 
+// Convert proof to String-tuples as expected by the Solidity Groth16 Verifier
+pub fn to_ethereum_proof(proof: Vec<u8>) -> ProofCalldata {
+    let deserialized_proof = circom::serialization::deserialize_proof(proof);
+    let proof = circom::serialization::to_ethereum_proof(&deserialized_proof);
+    let a = G1 {
+        x: proof.a.x.to_string(),
+        y: proof.a.y.to_string(),
+    };
+    let b = G2 {
+        x: proof.b.x.iter().map(|x| x.to_string()).collect(),
+        y: proof.b.y.iter().map(|x| x.to_string()).collect(),
+    };
+    let c = G1 {
+        x: proof.c.x.to_string(),
+        y: proof.c.y.to_string(),
+    };
+    ProofCalldata { a, b, c }
+}
+
+pub fn to_ethereum_inputs(inputs: Vec<u8>) -> Vec<String> {
+    let deserialized_inputs = circom::serialization::deserialize_inputs(inputs);
+    let inputs = deserialized_inputs
+        .0
+        .iter()
+        .map(|x| x.to_string())
+        .collect();
+    inputs
+}
+
 // TODO: Use FFIError::SerializationError instead
 impl MoproCircom {
     pub fn new() -> Self {
@@ -112,12 +165,10 @@ impl MoproCircom {
         }
     }
 
-    pub fn setup(&self, wasm_path: String, r1cs_path: String) -> Result<SetupResult, MoproError> {
+    pub fn initialize(&self, arkzkey_path: String, wasm_path: String) -> Result<(), MoproError> {
         let mut state_guard = self.state.write().unwrap();
-        let pk = state_guard.setup(wasm_path.as_str(), r1cs_path.as_str())?;
-        Ok(SetupResult {
-            provingKey: circom::serialization::serialize_proving_key(&pk),
-        })
+        state_guard.initialize(arkzkey_path.as_str(), wasm_path.as_str())?;
+        Ok(())
     }
 
     //             inputs: circom::serialization::serialize_inputs(&inputs),
@@ -156,6 +207,18 @@ impl MoproCircom {
         let is_valid = state_guard.verify_proof(deserialized_proof, deserialized_public_input)?;
         Ok(is_valid)
     }
+}
+
+#[cfg(feature = "gpu-benchmarks")]
+pub fn run_msm_benchmark(num_msm: Option<u32>) -> Result<BenchmarkResult, MoproError> {
+    let benchmarks = gpu_explorations::run_msm_benchmark(num_msm).unwrap();
+    Ok(benchmarks)
+}
+
+#[cfg(not(feature = "gpu-benchmarks"))]
+pub fn run_msm_benchmark(_num_msm: Option<u32>) -> Result<BenchmarkResult, MoproError> {
+    println!("gpu-benchmarks feature not enabled!");
+    panic!("gpu-benchmarks feature not enabled!");
 }
 
 fn add(a: u32, b: u32) -> u32 {
@@ -207,17 +270,18 @@ mod tests {
 
     #[test]
     fn test_end_to_end() -> Result<(), MoproError> {
-        // Paths to your wasm and r1cs files
+        // Paths to your wasm and arkzkey files
         let wasm_path =
             "./../mopro-core/examples/circom/multiplier2/target/multiplier2_js/multiplier2.wasm";
-        let r1cs_path = "./../mopro-core/examples/circom/multiplier2/target/multiplier2.r1cs";
+        let arkzkey_path =
+            "./../mopro-core/examples/circom/multiplier2/target/multiplier2_final.arkzkey";
 
         // Create a new MoproCircom instance
         let mopro_circom = MoproCircom::new();
 
-        // Step 1: Setup
-        let setup_result = mopro_circom.setup(wasm_path.to_string(), r1cs_path.to_string())?;
-        assert!(setup_result.provingKey.len() > 0);
+        // Step 1: Initialize
+        let init_result = mopro_circom.initialize(arkzkey_path.to_string(), wasm_path.to_string());
+        assert!(init_result.is_ok());
 
         let mut inputs = HashMap::new();
         let a = BigUint::from_str(
@@ -242,8 +306,15 @@ mod tests {
         assert_eq!(serialized_inputs, serialized_outputs);
 
         // Step 3: Verify Proof
-        let is_valid = mopro_circom.verify_proof(serialized_proof, serialized_inputs)?;
+        let is_valid =
+            mopro_circom.verify_proof(serialized_proof.clone(), serialized_inputs.clone())?;
         assert!(is_valid);
+
+        // Step 4: Convert Proof to Ethereum compatible proof
+        let proof_calldata = to_ethereum_proof(serialized_proof);
+        let inputs_calldata = to_ethereum_inputs(serialized_inputs);
+        assert!(proof_calldata.a.x.len() > 0);
+        assert!(inputs_calldata.len() > 0);
 
         Ok(())
     }
@@ -253,14 +324,15 @@ mod tests {
         // Paths to your wasm and r1cs files
         let wasm_path =
             "./../mopro-core/examples/circom/keccak256/target/keccak256_256_test_js/keccak256_256_test.wasm";
-        let r1cs_path = "./../mopro-core/examples/circom/keccak256/target/keccak256_256_test.r1cs";
+        let arkzkey_path =
+            "./../mopro-core/examples/circom/keccak256/target/keccak256_256_test_final.arkzkey";
 
         // Create a new MoproCircom instance
         let mopro_circom = MoproCircom::new();
 
         // Step 1: Setup
-        let setup_result = mopro_circom.setup(wasm_path.to_string(), r1cs_path.to_string())?;
-        assert!(setup_result.provingKey.len() > 0);
+        let setup_result = mopro_circom.initialize(arkzkey_path.to_string(), wasm_path.to_string());
+        assert!(setup_result.is_ok());
 
         // Prepare inputs
         let input_vec = vec![
@@ -287,9 +359,28 @@ mod tests {
 
         // Step 3: Verify Proof
 
-        let is_valid = mopro_circom.verify_proof(serialized_proof, serialized_inputs)?;
+        let is_valid =
+            mopro_circom.verify_proof(serialized_proof.clone(), serialized_inputs.clone())?;
         assert!(is_valid);
 
+        // Step 4: Convert Proof to Ethereum compatible proof
+        let proof_calldata = to_ethereum_proof(serialized_proof);
+        let inputs_calldata = to_ethereum_inputs(serialized_inputs);
+        assert!(proof_calldata.a.x.len() > 0);
+        assert!(inputs_calldata.len() > 0);
+
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "gpu-benchmarks")]
+    fn test_run_msm_benchmark() -> Result<(), MoproError> {
+        let benchmarks = run_msm_benchmark(None).unwrap();
+        println!("\nBenchmarking {:?} msm on BN254 curve", benchmarks.num_msm);
+        println!(
+            "└─ Average msm time: {:.5} ms\n└─ Overall processing time: {:.5} ms",
+            benchmarks.avg_processing_time, benchmarks.total_processing_time
+        );
         Ok(())
     }
 }
